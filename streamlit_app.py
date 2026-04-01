@@ -150,13 +150,7 @@ def log_message(msg, automation_state=None):
     else:
         if 'logs' in st.session_state:
             st.session_state.logs.append(formatted_msg)
-
-# ====================== TERA ORIGINAL CODE YAHAN SE (SAME) ======================
-# Ab yahan se tere purane saare functions paste kar dena (find_message_input se lekar end tak)
-
-# ====================== FIXED FOOTER (Sirf yeh line change ki hai) ======================
-st.markdown('<div class="footer">Made with ❤️ by Xmarty Ayush King | © 2025</div>', unsafe_allow_html=True)
-    else:
+   else:
         if 'logs' in st.session_state:
             st.session_state.logs.append(formatted_msg)
 def find_message_input(driver, process_id, automation_state=None):
