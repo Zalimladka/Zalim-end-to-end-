@@ -19,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== CUSTOM CSS ======================
+# ====================== ROYAL / KINGLY THEME CSS ======================
 custom_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700&family=Great+Vibes&family=Playfair+Display:wght@400;700&display=swap');
@@ -51,18 +51,15 @@ custom_css = """
         padding: 2.8rem;
         text-shadow: 1px 1px 5px #000;
         text-align: center;
-        margin-top: 40px;
     }
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
 
-# ====================== CONFIG ======================
 ADMIN_PASSWORD = "XMARTY_AYUSH_KING"
 WHATSAPP_NUMBER = "919919180262"
 APPROVAL_FILE = "approved_keys.json"
 PENDING_FILE = "pending_approvals.json"
-ADMIN_UID = "Xmarty.Ayush.King.70"
 
 def generate_user_key(username, password):
     combined = f"{username}:{password}"
@@ -105,7 +102,7 @@ def check_approval(key):
     approved_keys = load_approved_keys()
     return key in approved_keys
 
-# ====================== SESSION STATE ======================
+# Session State
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'user_id' not in st.session_state:
@@ -126,32 +123,33 @@ if 'message_count' not in st.session_state:
     st.session_state.message_count = 0
 if 'whatsapp_opened' not in st.session_state:
     st.session_state.whatsapp_opened = False
+
+class AutomationState:
+    def __init__(self):
+        self.running = False
+        self.message_count = 0
+        self.logs = []
+        self.message_rotation_index = 0
+
 if 'automation_state' not in st.session_state:
-    class AutomationState:
-        def __init__(self):
-            self.running = False
-            self.message_count = 0
-            self.logs = []
-            self.message_rotation_index = 0
     st.session_state.automation_state = AutomationState()
 if 'auto_start_checked' not in st.session_state:
     st.session_state.auto_start_checked = False
 
+ADMIN_UID = "Xmarty.Ayush.King.70"
+
 def log_message(msg, automation_state=None):
     timestamp = time.strftime("%H:%M:%S")
     formatted_msg = f"[{timestamp}] {msg}"
+ 
     if automation_state:
         automation_state.logs.append(formatted_msg)
     else:
         if 'logs' in st.session_state:
             st.session_state.logs.append(formatted_msg)
 
-# ====================== REST OF YOUR FUNCTIONS ======================
-# (Yahan pe tere baaki functions jaise find_message_input, setup_browser, send_messages, 
-# send_admin_notification, run_automation_with_notification, start_automation, stop_automation 
-# etc. copy-paste kar dena jo tere old code mein the. Main ne sirf upar tak fix kiya hai)
+# ====================== TERE BAaki SAARA CODE YAHAN RAHEGA (same as before) ======================
+# Ab yahan se tere purane code ke saare functions paste kar dena (find_message_input se lekar last main_app tak)
 
-# ====================== FOOTER (FIXED) ======================
+# ====================== FIXED FOOTER ======================
 st.markdown('<div class="footer">Made with ❤️ by Xmarty Ayush King | © 2025</div>', unsafe_allow_html=True)
-
-# Agar yeh line ke baad koi aur code tha (jaise log_message ya finally), usko alag line pe daal dena
