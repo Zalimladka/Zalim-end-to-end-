@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== ZALIM BOSS THEME CSS ======================
+# ====================== ZALIM BOSS THEME ======================
 custom_css = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap');
@@ -24,7 +24,6 @@ custom_css = """
         background-image: linear-gradient(rgba(20, 0, 40, 0.92), rgba(40, 0, 80, 0.85)),
                           url('https://i.ibb.co/0mQfX0b/dark-royal-purple-velvet-texture.jpg');
         background-size: cover;
-        background-position: center;
         background-attachment: fixed;
     }
     
@@ -118,29 +117,49 @@ def setup_browser(automation_state=None):
         raise e
 
 def find_message_input(driver, process_id, automation_state=None):
-    log_message(f'{process_id}: Finding message input box...', automation_state)
-    time.sleep(8)
+    log_message(f'{process_id}: Finding message input box... (waiting for full load)', automation_state)
+    
+    # Extra wait for Facebook Messenger
+    time.sleep(15)
 
+    # Strong selectors for 2026 Facebook Messenger
     selectors = [
-        'div[contenteditable="true"][role="textbox"]',
-        'div[contenteditable="true"][data-lexical-editor="true"]',
+        'div[role="textbox"][contenteditable="true"]',           # Best
+        'div[data-lexical-editor="true"]',
+        'div[aria-label="Aa"]',                                 # "Aa" placeholder
         'div[aria-label*="Message" i]',
-        '[role="textbox"]'
+        'div[aria-placeholder*="Message" i]',
+        '[data-testid="messenger_composer"] div[contenteditable="true"]',
+        'div[contenteditable="true"]'                           # Final fallback
     ]
 
-    for selector in selectors:
+    for idx, selector in enumerate(selectors):
         try:
+            log_message(f'{process_id}: Trying selector #{idx+1} → {selector[:70]}', automation_state)
             elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            for elem in elements:
-                try:
-                    elem.click()
-                    time.sleep(0.8)
-                    return elem
-                except:
-                    continue
+            
+            for element in elements:
+                is_editable = driver.execute_script("""
+                    return arguments[0].isContentEditable || 
+                           arguments[0].contentEditable === 'true';
+                """, element)
+
+                if is_editable:
+                    log_message(f'{process_id}: ✅ SUCCESS! Found message input (selector #{idx+1})', automation_state)
+                    
+                    # Force focus and click
+                    driver.execute_script("""
+                        const el = arguments[0];
+                        el.scrollIntoView({block: 'center'});
+                        el.focus();
+                        el.click();
+                    """, element)
+                    time.sleep(2)
+                    return element
         except:
             continue
-    log_message(f'{process_id}: Could not find message input!', automation_state)
+
+    log_message(f'{process_id}: ❌ Could not find message input box!', automation_state)
     return None
 
 def get_next_message(messages, automation_state):
@@ -159,7 +178,7 @@ def send_messages(config, automation_state, user_id):
         driver.get('https://www.facebook.com/')
         time.sleep(10)
 
-        # Cookies
+        # Add cookies
         if config.get('cookies') and config['cookies'].strip():
             log_message("Adding cookies...", automation_state)
             for cookie in config['cookies'].split(';'):
@@ -175,7 +194,13 @@ def send_messages(config, automation_state, user_id):
             driver.get(f'https://www.facebook.com/messages/t/{chat_id}')
         else:
             driver.get('https://www.facebook.com/messages')
-        time.sleep(15)
+        
+        # Extra wait + scroll to load chat properly
+        time.sleep(18)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(3)
+        driver.execute_script("window.scrollTo(0, 400);")
+        time.sleep(3)
 
         message_input = find_message_input(driver, "AUTO-1", automation_state)
         if not message_input:
@@ -230,7 +255,7 @@ def start_automation(config, user_id):
     
     state.running = True
     state.message_count = 0
-    state.logs = []                    # Clear previous logs on new start
+    state.logs = []
     state.message_rotation_index = 0
     db.set_automation_running(user_id, True)
 
@@ -339,12 +364,11 @@ def main_app():
                 st.session_state.automation_state.logs = []
                 st.rerun()
 
-        # Status Metrics
         status = "🟢 Running" if st.session_state.automation_state.running else "🔴 Stopped"
         st.metric("Automation Status", status)
         st.metric("Messages Sent", st.session_state.automation_state.message_count)
 
-        # Improved Live Logs
+        # Live Logs
         st.subheader("🔴 Live Logs")
         logs_container = st.container()
         
@@ -367,12 +391,11 @@ def main_app():
                 
                 st.markdown(f'<div class="logs-container">{log_html}</div>', unsafe_allow_html=True)
 
-        # Auto refresh when running
         if st.session_state.automation_state.running:
             time.sleep(1.2)
             st.rerun()
 
-# ====================== APP ENTRY POINT ======================
+# ====================== RUN APP ======================
 if not st.session_state.logged_in:
     login_page()
 else:
