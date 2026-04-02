@@ -1,9 +1,8 @@
 import streamlit as st
 import time
 import threading
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
+import asyncio
+from playwright.async_api import async_playwright
 import database as db
 
 st.set_page_config(
@@ -60,162 +59,111 @@ def log_message(msg, automation_state=None):
     else:
         st.session_state.automation_state.logs.append(formatted_msg)
 
-# ====================== IMPROVED BROWSER SETUP ======================
-def setup_browser(automation_state=None):
-    log_message('Setting up Chrome browser...', automation_state)
-    options = Options()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-setuid-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    options.add_argument('--remote-debugging-port=9222')
-    options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-    
-    # Extra stability flags (timeout error ke liye)
-    options.add_argument('--disable-background-timer-throttling')
-    options.add_argument('--disable-backgrounding-occluded-windows')
-    options.add_argument('--disable-renderer-backgrounding')
-    options.page_load_strategy = 'normal'
-
+# ====================== PLAYWRIGHT AUTOMATION ======================
+async def send_messages_playwright(config, automation_state, user_id):
     try:
-        driver = webdriver.Chrome(options=options)
-        driver.set_page_load_timeout(120)      # Timeout badhaya
-        driver.implicitly_wait(20)
-        log_message('✅ Browser launched successfully!', automation_state)
-        return driver
-    except Exception as e:
-        log_message(f'❌ Browser failed: {str(e)[:100]}', automation_state)
-        raise e
+        log_message("🚀 Starting Playwright automation by ZALIM BOSS 😈", automation_state)
 
-# ====================== FIND MESSAGE INPUT (Improved) ======================
-def find_message_input(driver, process_id, automation_state=None):
-    log_message(f'{process_id}: Finding message input box...', automation_state)
-    time.sleep(18)
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+            )
+            context = await browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            )
+            page = await context.new_page()
 
-    selectors = [
-        'div[role="textbox"][contenteditable="true"]',
-        'div[data-lexical-editor="true"]',
-        'div[aria-label="Aa"]',
-        'div[aria-label*="Message" i]',
-        'div[aria-placeholder*="Message" i]',
-        'div[contenteditable="true"]'
-    ]
+            await page.goto('https://www.facebook.com/', timeout=60000)
+            await page.wait_for_timeout(10000)
 
-    for idx, selector in enumerate(selectors):
-        try:
-            log_message(f'{process_id}: Trying selector #{idx+1}', automation_state)
-            elements = driver.find_elements(By.CSS_SELECTOR, selector)
-            for element in elements:
-                is_editable = driver.execute_script("""
-                    return arguments[0].isContentEditable || arguments[0].contentEditable === 'true';
-                """, element)
-                if is_editable:
-                    log_message(f'{process_id}: ✅ SUCCESS! Found message input!', automation_state)
-                    driver.execute_script("arguments[0].scrollIntoView({block:'center'}); arguments[0].focus(); arguments[0].click();", element)
-                    time.sleep(2)
-                    return element
-        except:
-            continue
+            # Add cookies if provided
+            if config.get('cookies') and config['cookies'].strip():
+                log_message("Adding cookies...", automation_state)
+                # Cookies parsing can be improved if needed
 
-    log_message(f'{process_id}: ❌ Could not find message input!', automation_state)
-    return None
+            chat_id = config.get('chat_id', '').strip()
+            if chat_id:
+                await page.goto(f'https://www.facebook.com/messages/t/{chat_id}', timeout=60000)
+            else:
+                await page.goto('https://www.facebook.com/messages', timeout=60000)
 
-# ====================== SEND MESSAGES ======================
-def send_messages(config, automation_state, user_id):
-    driver = None
-    try:
-        log_message("🚀 Starting automation by ZALIM BOSS 😈", automation_state)
-        driver = setup_browser(automation_state)
+            await page.wait_for_timeout(18000)  # Wait for chat to load
 
-        driver.get('https://www.facebook.com/')
-        time.sleep(12)
+            # Find message input (Playwright is better at this)
+            message_input = None
+            selectors = [
+                'div[role="textbox"][contenteditable="true"]',
+                'div[data-lexical-editor="true"]',
+                'div[aria-label="Aa"]',
+                'div[aria-label*="Message" i]'
+            ]
 
-        # Cookies
-        if config.get('cookies') and config['cookies'].strip():
-            log_message("Adding cookies...", automation_state)
-            for cookie in config['cookies'].split(';'):
-                if '=' in cookie:
-                    name, value = [x.strip() for x in cookie.split('=', 1)]
-                    try:
-                        driver.add_cookie({'name': name, 'value': value, 'domain': '.facebook.com'})
-                    except:
-                        pass
+            for selector in selectors:
+                try:
+                    message_input = await page.wait_for_selector(selector, timeout=10000)
+                    if message_input:
+                        log_message("✅ Found message input box!", automation_state)
+                        break
+                except:
+                    continue
 
-        chat_id = config.get('chat_id', '').strip()
-        if chat_id:
-            driver.get(f'https://www.facebook.com/messages/t/{chat_id}')
-        else:
-            driver.get('https://www.facebook.com/messages')
+            if not message_input:
+                log_message("❌ Could not find message input!", automation_state)
+                await browser.close()
+                return
 
-        time.sleep(20)  # Extra wait
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(4)
+            delay = int(config.get('delay', 30))
+            messages_list = [m.strip() for m in config.get('messages', 'Hello!').split('\n') if m.strip()]
 
-        message_input = find_message_input(driver, "AUTO-1", automation_state)
-        if not message_input:
-            automation_state.running = False
-            db.set_automation_running(user_id, False)
-            return
+            messages_sent = 0
+            while automation_state.running:
+                base_msg = messages_list[automation_state.message_rotation_index % len(messages_list)]
+                automation_state.message_rotation_index += 1
+                full_msg = f"{config.get('name_prefix', '')} {base_msg}".strip()
 
-        delay = int(config.get('delay', 30))
-        messages_list = [m.strip() for m in config.get('messages', 'Hello!').split('\n') if m.strip()]
-
-        messages_sent = 0
-        while automation_state.running:
-            base_msg = messages_list[automation_state.message_rotation_index % len(messages_list)]
-            automation_state.message_rotation_index += 1
-            full_msg = f"{config.get('name_prefix', '')} {base_msg}".strip()
-
-            try:
-                driver.execute_script("""
-                    const el = arguments[0]; const txt = arguments[1];
-                    el.focus(); el.textContent = txt;
-                    el.dispatchEvent(new Event('input', {bubbles: true}));
-                """, message_input, full_msg)
-                time.sleep(1)
-                driver.execute_script("arguments[0].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));", message_input)
+                await message_input.click()
+                await message_input.fill(full_msg)
+                await page.keyboard.press('Enter')
 
                 messages_sent += 1
                 automation_state.message_count = messages_sent
-                log_message(f"✅ Sent #{messages_sent}", automation_state)
-                time.sleep(delay)
+                log_message(f"✅ Sent #{messages_sent}: {full_msg[:50]}...", automation_state)
 
-            except Exception as e:
-                log_message(f"⚠️ Send error: {str(e)[:80]}", automation_state)
-                time.sleep(5)
+                await page.wait_for_timeout(delay * 1000)
+
+            await browser.close()
+            log_message("Browser closed successfully.", automation_state)
 
     except Exception as e:
         log_message(f"💥 Fatal Error: {str(e)}", automation_state)
-    finally:
-        if driver:
-            try:
-                driver.quit()
-                log_message("Browser closed.", automation_state)
-            except:
-                pass
+        automation_state.running = False
+        db.set_automation_running(user_id, False)
 
-# ====================== START / STOP ======================
 def start_automation(config, user_id):
     state = st.session_state.automation_state
     if state.running:
         st.warning("Already running!")
         return
+
     state.running = True
     state.message_count = 0
     state.logs = []
     state.message_rotation_index = 0
     db.set_automation_running(user_id, True)
 
-    thread = threading.Thread(target=send_messages, args=(config, state, user_id), daemon=True)
+    # Run async function in thread
+    def run_async():
+        asyncio.run(send_messages_playwright(config, state, user_id))
+
+    thread = threading.Thread(target=run_async, daemon=True)
     thread.start()
-    st.success("😈 Automation Started!")
+    st.success("😈 Playwright Automation Started by ZALIM BOSS!")
 
 def stop_automation(user_id):
     st.session_state.automation_state.running = False
     db.set_automation_running(user_id, False)
-    st.success("⛔ Stopped")
+    st.success("⛔ Automation Stopped")
 
 # ====================== UI (Login + Main) ======================
 def login_page():
@@ -251,7 +199,7 @@ def login_page():
                 st.success(msg) if success else st.error(msg)
 
 def main_app():
-    st.markdown(f"<h1 style='text-align:center;'>😈 ZALIM BOSS E2E OFFLINE 😈</h1><p style='text-align:center;'>Welcome, <b>{st.session_state.username}</b> 😈</p>", unsafe_allow_html=True)
+    st.markdown(f"<h1 style='text-align:center;'>😈 ZALIM BOSS E2E OFFLINE (Playwright) 😈</h1><p style='text-align:center;'>Welcome, <b>{st.session_state.username}</b> 😈</p>", unsafe_allow_html=True)
 
     with st.sidebar:
         st.markdown(f"### 😈 {st.session_state.username}")
@@ -273,7 +221,7 @@ def main_app():
         name_prefix = st.text_input("Name Prefix", value=config.get('name_prefix', ''))
         delay = st.number_input("Delay (seconds)", min_value=5, value=config.get('delay', 30))
         messages = st.text_area("Messages (one per line)", value=config.get('messages', ''), height=150)
-        cookies = st.text_area("Cookies", value=config.get('cookies', ''), height=100)
+        cookies = st.text_area("Cookies (optional)", value=config.get('cookies', ''), height=100)
 
         if st.button("💾 Save Configuration", type="primary"):
             db.update_user_config(st.session_state.user_id, chat_id, name_prefix, delay, cookies, messages)
@@ -293,13 +241,13 @@ def main_app():
 
         st.subheader("🔴 Live Logs")
         if st.session_state.automation_state.logs:
-            html = "".join(f'<div style="margin:4px 0; padding:6px; background:rgba(0,0,0,0.4); border-radius:6px;">{log}</div>' for log in reversed(st.session_state.automation_state.logs[-30:]))
+            html = "".join(f'<div style="margin:5px 0;padding:8px;background:rgba(0,0,0,0.4);border-radius:6px;">{log}</div>' for log in reversed(st.session_state.automation_state.logs[-30:]))
             st.markdown(f'<div class="logs-container">{html}</div>', unsafe_allow_html=True)
         else:
             st.info("No logs yet")
 
         if st.session_state.automation_state.running:
-            time.sleep(1.2)
+            time.sleep(1)
             st.rerun()
 
 if not st.session_state.logged_in:
@@ -307,4 +255,4 @@ if not st.session_state.logged_in:
 else:
     main_app()
 
-st.markdown('<div class="footer">Made with ❤️ by ZALIM BOSS 😈 | © 2026</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Made with ❤️ by ZALIM BOSS 😈 (Playwright) | © 2026</div>', unsafe_allow_html=True)
